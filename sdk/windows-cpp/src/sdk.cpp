@@ -294,14 +294,14 @@ struct SdkImpl {
 			}
 			if (changed) save_state();
 		}
-		// 若宿主显式提供 pin 集合（最强模式），以宿主为准
-		if (cfg.pin_pubkeys && cfg.pin_pubkeys_len > 0) {
+		// 若宿主显式提供 pin 集合（最强模式），以宿主为准；
+		// kid 使用服务器真实密钥 ID，保证与租约头的 kid 匹配
+		if (cfg.pin_entries && cfg.pin_entries_len > 0) {
 			st.pinned_sign_keys.clear();
-			for (size_t i = 0; i < cfg.pin_pubkeys_len; i++) {
-				uint8_t id[8] = {};
-				memcpy(id, cfg.pin_pubkeys + i * 32, 8);
-				st.pinned_sign_keys.push_back("host" + to_hex(id, 8) + "|" +
-				                              b64url_encode(cfg.pin_pubkeys + i * 32, 32));
+			for (size_t i = 0; i < cfg.pin_entries_len; i++) {
+				if (!cfg.pin_entries[i].kid) continue;
+				st.pinned_sign_keys.push_back(std::string(cfg.pin_entries[i].kid) + "|" +
+				                              b64url_encode(cfg.pin_entries[i].pub, 32));
 			}
 		}
 		rebuild_pins();

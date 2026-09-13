@@ -59,13 +59,21 @@ typedef enum vft_state {
 	VFT_STATE_ERROR = 4,
 } vft_state_t;
 
+// 编译期公钥固定条目：kid 必须与服务器签名密钥 ID 一致（如 "sign-a"），
+// pub 为 32 字节 Ed25519 原始公钥。由 cmd/pubkeys 离线导出。
+typedef struct vft_pin_entry {
+	const char *kid;
+	unsigned char pub[32];   // 调用方填写，SDK 只读
+} vft_pin_entry;
+
 typedef struct vft_config {
 	const char *server_url;     // 例如 "https://api.example.com"（仅 HTTPS）
 	const char *product_code;   // 产品代码
 	const char *storage_dir;    // 状态目录（默认 %PROGRAMDATA%\Lumistar）
 	const char *client_version; // 客户端版本（最低版本策略用）
-	const unsigned char *pin_pubkeys;   // 可选：Ed25519 公钥池（32B * n）
-	size_t pin_pubkeys_len;             // n（0 = 使用 bootstrap 分发并持久固定）
+	const vft_pin_entry *pin_entries; // 可选：编译期固定服务器公钥（生产强烈推荐，
+	                                  // 消除首次安装的信任窗口；kid 需与服务器一致）
+	size_t pin_entries_len;             // n（0 = 使用 bootstrap 分发并持久固定）
 	int insecure_skip_tls_verify;       // 仅限本地开发联调！生产必须为 0
 } vft_config;
 

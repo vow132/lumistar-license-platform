@@ -51,7 +51,7 @@ if (lic.has_feature("aimbot")) {
 | 换机 | 新设备激活受设备名额限制；旧设备 `DeactivateDevice` 或管理员解绑后可重绑 |
 | 续费 | `lic.redeem(renewal_card)`；时长叠加到现有到期时间 |
 | 重装系统 | 同指纹新密钥：服务端自动轮换设备公钥（不占新名额） |
-| 公钥轮换 | 首次 bootstrap TOFU 固定公钥集；高安全场景由宿主注入 `pin_pubkeys` |
+| 公钥轮换 | 默认首次 bootstrap TOFU 固定公钥集；生产推荐编译期固定（见下节） |
 
 ## 错误处理
 
@@ -63,10 +63,33 @@ if (lic.has_feature("aimbot")) {
 - `VFT_E_CONCURRENT_LIMIT`：并发名额占用中，提示稍后或下线其它设备
 - `VFT_E_RATE_LIMITED` / `VFT_E_BANNED`：静默降级，不要提示细节（对抗枚举）
 
+## 编译期公钥固定（生产强烈推荐）
+
+默认的 TOFU 模式下，客户端"首次"连接时信任服务器出示的公钥——若用户首次安装时网络已被劫持，攻击者可以让客户端固定他自己的公钥。消除这个窗口的方法是把服务器公钥编译进客户端：
+
+1. 在服务器上导出公钥（工具只输出公钥，绝不输出私钥种子）：
+
+   ```powershell
+   cd apps/license-api
+   # 先加载密钥环境（VFT_SIGN_KEYS / VFT_SIGN_ACTIVE_KID）
+   go run ./cmd/pubkeys
+   ```
+
+2. 把输出的 `kPinnedKeys` 数组填入宿主程序，并在 `vft_config` 中启用：
+
+   ```cpp
+   cfg.pin_entries = kPinnedKeys;   // kid 必须与服务器签名密钥 ID 一致（如 "sign-a"）
+   cfg.pin_entries_len = 2;
+   ```
+
+3. 注意：轮换服务器签名密钥后需重新导出，把新 `kid` 追加进数组并发布新版客户端（服务端在过渡期保留旧公钥验签）。
+
+验证方式：`activate_demo` 支持把公钥（base64url）作为最后一个参数传入，pin 正确公钥时激活正常，pin 错误公钥时激活返回 `untrusted server response`（租约验签拒绝）。
+
 ## 安全注意事项
 
 - **生产环境严禁** `cfg.insecure_skip_tls_verify = 1`。示例程序默认开启证书校验；仅在本地自签名联调时，显式追加 `--insecure-dev-only` 参数才会关闭校验。
+- **生产环境推荐**设置 `cfg.pin_entries`（编译期公钥固定），消除 TOFU 首次安装的信任窗口。
 - 授权判定必须走 `has_feature`（内部验签），不要缓存其返回值或绕过 SDK 自行判断。
 - 状态文件含 DPAPI 保护的材料，随用户域隔离；不要复制到其它机器。
 - `DeactivateDevice` 前先 `StopHeartbeat`（示例代码已按此顺序），避免并发使用序列号。
-- 如宿主可分发嵌入公钥（编译期固定），设置 `cfg.pin_pubkeys` 可消除 TOFU 信任面。
